@@ -1,0 +1,10 @@
+project_id = "zhefyozylaqednfhsrok"
+
+[functions.parse-resume]
+verify_jwt = true
+
+[functions.analyze-job-fit]
+verify_jwt = true
+
+[functions.improve-resume]
+verify_jwt = true
