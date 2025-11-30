@@ -1,9 +1,11 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { sanitizeForJson, sanitizeObjectForJson } from "../_shared/sanitize.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Content-Type': 'application/json; charset=utf-8',
 };
 
 serve(async (req) => {
@@ -14,6 +16,11 @@ serve(async (req) => {
   try {
     const { parsedResume, jobTitle, jobDescription } = await req.json();
     console.log('Analyzing job fit...');
+    
+    // Sanitize all incoming data to prevent Unicode escape sequence errors
+    const sanitizedJobTitle = sanitizeForJson(jobTitle);
+    const sanitizedJobDescription = sanitizeForJson(jobDescription);
+    const sanitizedParsedResume = sanitizeObjectForJson(parsedResume);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -45,13 +52,13 @@ Be thorough, specific, and actionable in your analysis.`
           },
           {
             role: 'user',
-            content: `Job Title: ${jobTitle}
+            content: `Job Title: ${sanitizedJobTitle}
 
 Job Description:
-${jobDescription}
+${sanitizedJobDescription}
 
 Candidate Resume:
-${JSON.stringify(parsedResume, null, 2)}
+${JSON.stringify(sanitizedParsedResume, null, 2)}
 
 Analyze the fit and provide detailed recommendations.`
           }
@@ -85,9 +92,11 @@ Analyze the fit and provide detailed recommendations.`
     const analysis = JSON.parse(data.choices[0].message.content);
     
     console.log('Job fit analysis completed');
+    
+    // Return properly formatted JSON with correct Content-Type
     return new Response(
       JSON.stringify({ analysis }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: corsHeaders }
     );
   } catch (error) {
     console.error('Error in analyze-job-fit function:', error);

@@ -1,9 +1,11 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { sanitizeForJson, sanitizeObjectForJson } from "../_shared/sanitize.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Content-Type': 'application/json; charset=utf-8',
 };
 
 serve(async (req) => {
@@ -14,6 +16,11 @@ serve(async (req) => {
   try {
     const { parsedResume, jobTitle, jobDescription } = await req.json();
     console.log('Improving resume...');
+    
+    // Sanitize all incoming data to prevent Unicode escape sequence errors
+    const sanitizedJobTitle = sanitizeForJson(jobTitle);
+    const sanitizedJobDescription = sanitizeForJson(jobDescription);
+    const sanitizedParsedResume = sanitizeObjectForJson(parsedResume);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -47,13 +54,13 @@ Make improvements concrete, actionable, and ATS-friendly.`
           },
           {
             role: 'user',
-            content: `Target Job: ${jobTitle}
+            content: `Target Job: ${sanitizedJobTitle}
 
 Job Description:
-${jobDescription}
+${sanitizedJobDescription}
 
 Current Resume:
-${JSON.stringify(parsedResume, null, 2)}
+${JSON.stringify(sanitizedParsedResume, null, 2)}
 
 Provide specific improvements for this resume.`
           }
@@ -87,9 +94,11 @@ Provide specific improvements for this resume.`
     const improvements = JSON.parse(data.choices[0].message.content);
     
     console.log('Resume improvements generated');
+    
+    // Return properly formatted JSON with correct Content-Type
     return new Response(
       JSON.stringify({ improvements }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: corsHeaders }
     );
   } catch (error) {
     console.error('Error in improve-resume function:', error);

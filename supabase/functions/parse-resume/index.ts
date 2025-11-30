@@ -1,9 +1,11 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { sanitizeForJson } from "../_shared/sanitize.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Content-Type': 'application/json; charset=utf-8',
 };
 
 serve(async (req) => {
@@ -14,6 +16,9 @@ serve(async (req) => {
   try {
     const { resumeText } = await req.json();
     console.log('Parsing resume text...');
+    
+    // Sanitize incoming resume text to prevent Unicode escape sequence errors
+    const sanitizedResumeText = sanitizeForJson(resumeText);
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -47,7 +52,7 @@ Be precise and extract all available information.`
           },
           {
             role: 'user',
-            content: `Parse this resume:\n\n${resumeText}`
+            content: `Parse this resume:\n\n${sanitizedResumeText}`
           }
         ],
         response_format: { type: "json_object" }
@@ -79,9 +84,11 @@ Be precise and extract all available information.`
     const parsedData = JSON.parse(data.choices[0].message.content);
     
     console.log('Resume parsed successfully');
+    
+    // Return properly formatted JSON with correct Content-Type
     return new Response(
       JSON.stringify({ parsedData }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: corsHeaders }
     );
   } catch (error) {
     console.error('Error in parse-resume function:', error);

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Upload as UploadIcon, FileText, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Progress } from "@/components/ui/progress";
+import { sanitizeForJson } from "@/lib/sanitizeForJson";
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -74,6 +75,9 @@ const Upload = () => {
 
       // Extract text from file
       const extractedText = await extractTextFromFile(file);
+      
+      // Sanitize text to prevent Unicode escape sequence errors
+      const sanitizedText = sanitizeForJson(extractedText);
 
       setProgress(60);
       setParsing(true);
@@ -81,10 +85,18 @@ const Upload = () => {
       // Parse resume with AI
       const { data: parseData, error: parseError } = await supabase.functions.invoke(
         "parse-resume",
-        { body: { resumeText: extractedText } }
+        { body: { resumeText: sanitizedText } }
       );
 
-      if (parseError) throw parseError;
+      if (parseError) {
+        // Check for specific error types
+        if (parseError.message?.includes('Rate limit')) {
+          throw new Error('AI rate limit exceeded. Please try again in a moment.');
+        } else if (parseError.message?.includes('credits')) {
+          throw new Error('AI credits depleted. Please contact support.');
+        }
+        throw parseError;
+      }
 
       setProgress(80);
 
