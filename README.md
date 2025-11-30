@@ -1,4 +1,6 @@
-# Welcome to your Lovable project
+# AI Resume Analyzer
+
+A production-quality AI-powered resume analysis application built with React, TypeScript, and Lovable Cloud.
 
 ## Project info
 
@@ -71,3 +73,24 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Troubleshooting
+
+### Unicode Escape Sequence Errors
+
+If you encounter "unsupported Unicode escape sequence" errors when uploading resumes or during AI analysis, this is due to special characters (backslashes, control characters, or malformed Unicode sequences) in the resume text.
+
+**How it's fixed:**
+
+The application implements a robust sanitization pipeline that:
+- Escapes all backslashes before JSON serialization
+- Converts control characters to proper `\uXXXX` format
+- Sanitizes text at multiple layers: file upload, edge function input/output, and AI interactions
+- Uses proper `Content-Type: application/json; charset=utf-8` headers
+
+The `sanitizeForJson()` utility is applied automatically to all user inputs and AI responses, ensuring JSON-safe data transmission throughout the stack. The implementation includes:
+
+1. **Client-side sanitization** (`src/lib/sanitizeForJson.ts`): Sanitizes extracted resume text and job descriptions before sending to edge functions
+2. **Server-side sanitization** (`supabase/functions/_shared/sanitize.ts`): Sanitizes all incoming data and AI prompts in edge functions
+3. **Proper JSON handling**: All responses use `JSON.stringify()` and include correct Content-Type headers
+4. **UTF-8 encoding**: Files are read as text with UTF-8 encoding to properly handle multi-byte characters

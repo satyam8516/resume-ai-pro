@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { sanitizeForJson } from "@/lib/sanitizeForJson";
 
 const Analyze = () => {
   const { resumeId } = useParams();
@@ -43,6 +44,10 @@ const Analyze = () => {
       toast.error("Please enter both job title and description");
       return;
     }
+    
+    // Sanitize inputs to prevent Unicode escape sequence errors
+    const sanitizedJobTitle = sanitizeForJson(jobTitle.trim());
+    const sanitizedJobDescription = sanitizeForJson(jobDescription.trim());
 
     setAnalyzing(true);
     try {
@@ -55,13 +60,20 @@ const Analyze = () => {
         {
           body: {
             parsedResume: resume.parsed_data,
-            jobTitle: jobTitle.trim(),
-            jobDescription: jobDescription.trim(),
+            jobTitle: sanitizedJobTitle,
+            jobDescription: sanitizedJobDescription,
           },
         }
       );
 
-      if (fitError) throw fitError;
+      if (fitError) {
+        if (fitError.message?.includes('Rate limit')) {
+          throw new Error('AI rate limit exceeded. Please try again in a moment.');
+        } else if (fitError.message?.includes('credits')) {
+          throw new Error('AI credits depleted. Please contact support.');
+        }
+        throw fitError;
+      }
 
       // Get improvements
       const { data: improveData, error: improveError } = await supabase.functions.invoke(
@@ -69,22 +81,29 @@ const Analyze = () => {
         {
           body: {
             parsedResume: resume.parsed_data,
-            jobTitle: jobTitle.trim(),
-            jobDescription: jobDescription.trim(),
+            jobTitle: sanitizedJobTitle,
+            jobDescription: sanitizedJobDescription,
           },
         }
       );
 
-      if (improveError) throw improveError;
+      if (improveError) {
+        if (improveError.message?.includes('Rate limit')) {
+          throw new Error('AI rate limit exceeded. Please try again in a moment.');
+        } else if (improveError.message?.includes('credits')) {
+          throw new Error('AI credits depleted. Please contact support.');
+        }
+        throw improveError;
+      }
 
-      // Save analysis
+      // Save analysis (use sanitized versions for storage)
       const { data: analysisData, error: analysisError } = await supabase
         .from("analyses")
         .insert({
           user_id: user.id,
           resume_id: resumeId,
-          job_title: jobTitle.trim(),
-          job_description: jobDescription.trim(),
+          job_title: sanitizedJobTitle,
+          job_description: sanitizedJobDescription,
           match_score: fitData.analysis.matchScore,
           matched_skills: fitData.analysis.matchedSkills,
           missing_skills: fitData.analysis.missingSkills,
