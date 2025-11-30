@@ -15,10 +15,12 @@ serve(async (req) => {
 
   try {
     const { resumeText } = await req.json();
-    console.log('Parsing resume text...');
+    console.log('Parsing resume text, length:', resumeText?.length || 0);
     
-    // Sanitize incoming resume text to prevent Unicode escape sequence errors
+    // SECURITY: Sanitize incoming resume text to prevent Unicode escape sequence errors
+    // This handles malformed \u sequences, backslashes, and control characters
     const sanitizedResumeText = sanitizeForJson(resumeText);
+    console.log('Sanitization complete, processing with AI...');
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -63,17 +65,24 @@ Be precise and extract all available information.`
       const errorText = await response.text();
       console.error('AI gateway error:', response.status, errorText);
       
+      // RATE LIMITING: Provide clear user feedback for quota issues
       if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: 'Rate limit exceeded. Please try again in a moment.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ 
+            error: 'AI rate limit exceeded. Please wait a moment before trying again.',
+            retryAfter: 60 // suggest 60 second wait
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } }
         );
       }
       
       if (response.status === 402) {
         return new Response(
-          JSON.stringify({ error: 'AI credits depleted. Please add more credits to continue.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ 
+            error: 'AI credits depleted. Please add credits to your Lovable workspace to continue.',
+            action: 'topup'
+          }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json; charset=utf-8' } }
         );
       }
 

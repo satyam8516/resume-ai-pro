@@ -15,12 +15,14 @@ serve(async (req) => {
 
   try {
     const { parsedResume, jobTitle, jobDescription } = await req.json();
-    console.log('Improving resume...');
+    console.log('Generating resume improvements for:', jobTitle?.substring(0, 50) || 'Unknown');
     
-    // Sanitize all incoming data to prevent Unicode escape sequence errors
+    // SECURITY: Sanitize all incoming data to prevent Unicode escape sequence errors
+    // This ensures AI receives clean, parseable input without malformed Unicode
     const sanitizedJobTitle = sanitizeForJson(jobTitle);
     const sanitizedJobDescription = sanitizeForJson(jobDescription);
     const sanitizedParsedResume = sanitizeObjectForJson(parsedResume);
+    console.log('Data sanitized, generating improvements with AI...');
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
