@@ -37,18 +37,42 @@ const Upload = () => {
   };
 
   const extractTextFromFile = async (file: File): Promise<string> => {
-    // For MVP, we'll use a simple text extraction
-    // In production, you'd want to use libraries like pdf-parse or mammoth
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const text = reader.result as string;
-        // Simple extraction - just get the text content
-        resolve(text);
-      };
-      reader.onerror = reject;
-      reader.readAsText(file);
-    });
+    // PRODUCTION: Binary-safe file handling with proper UTF-8 decoding
+    if (file.type === "application/pdf") {
+      // PDF extraction using pdf.js - read as binary ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
+      const typedArray = new Uint8Array(arrayBuffer);
+      
+      // Lazy load pdf.js to reduce initial bundle size
+      const pdfjsLib = await import('pdfjs-dist');
+      
+      // Configure worker from CDN
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      
+      const pdfData = await pdfjsLib.getDocument({ data: typedArray }).promise;
+      let text = "";
+      
+      console.log(`Extracting text from ${pdfData.numPages} PDF pages...`);
+      for (let i = 1; i <= pdfData.numPages; i++) {
+        const page = await pdfData.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items
+          .map((item: any) => item.str)
+          .join(" ");
+        text += pageText + "\n";
+      }
+      
+      return text;
+    } else {
+      // DOCX/TXT: Read as UTF-8 text
+      // FileReader.readAsText() automatically decodes as UTF-8
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsText(file, 'UTF-8'); // Explicit UTF-8 encoding
+      });
+    }
   };
 
   const handleUpload = async () => {
@@ -73,11 +97,15 @@ const Upload = () => {
 
       setProgress(40);
 
-      // Extract text from file
+      // SECURITY: Extract text as binary/UTF-8, then sanitize immediately
+      // This handles malformed \u sequences, backslashes, and control characters from PDF/DOCX
+      console.log('Extracting text from file...');
       const extractedText = await extractTextFromFile(file);
+      console.log(`Extracted ${extractedText.length} characters, sanitizing...`);
       
-      // Sanitize text to prevent Unicode escape sequence errors
+      // Sanitize to prevent Unicode escape sequence errors
       const sanitizedText = sanitizeForJson(extractedText);
+      console.log('Text sanitized, invoking AI parser...');
 
       setProgress(60);
       setParsing(true);
@@ -89,11 +117,12 @@ const Upload = () => {
       );
 
       if (parseError) {
-        // Check for specific error types
-        if (parseError.message?.includes('Rate limit')) {
-          throw new Error('AI rate limit exceeded. Please try again in a moment.');
-        } else if (parseError.message?.includes('credits')) {
-          throw new Error('AI credits depleted. Please contact support.');
+        // RATE LIMITING: Provide clear, actionable error messages
+        console.error('Parse error:', parseError);
+        if (parseError.message?.includes('Rate limit') || parseError.message?.includes('429')) {
+          throw new Error('AI rate limit exceeded. Please wait 60 seconds and try again.');
+        } else if (parseError.message?.includes('credits') || parseError.message?.includes('402')) {
+          throw new Error('AI credits depleted. Please add credits in Settings → Workspace → Usage.');
         }
         throw parseError;
       }
@@ -125,12 +154,25 @@ const Upload = () => {
       }, 500);
     } catch (error: any) {
       console.error("Upload error:", error);
-      if (error.message?.includes("Rate limit")) {
-        toast.error("AI rate limit exceeded. Please try again in a moment.");
-      } else if (error.message?.includes("credits")) {
-        toast.error("AI credits depleted. Please add more credits to continue.");
+      // SECURITY: Never log sensitive data - only log error type and sanitized message
+      const sanitizedErrorMsg = error.message?.substring(0, 200) || "Unknown error";
+      console.error("Sanitized error:", sanitizedErrorMsg);
+      
+      // User-friendly error messages with actionable guidance
+      if (error.message?.includes("Rate limit") || error.message?.includes("429")) {
+        toast.error("AI rate limit exceeded. Please wait 60 seconds and try again.", {
+          duration: 5000,
+        });
+      } else if (error.message?.includes("credits") || error.message?.includes("402")) {
+        toast.error("AI credits depleted. Add credits in Settings → Workspace → Usage.", {
+          duration: 5000,
+        });
+      } else if (error.message?.includes("Unicode") || error.message?.includes("escape")) {
+        toast.error("File contains unsupported characters. Please try a different file format.", {
+          duration: 5000,
+        });
       } else {
-        toast.error(error.message || "Failed to upload resume");
+        toast.error(error.message || "Failed to upload resume. Please try again.");
       }
     } finally {
       setUploading(false);

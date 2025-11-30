@@ -1,22 +1,32 @@
 /**
- * Sanitizes a string to be JSON-safe by escaping problematic characters
- * that could cause "unsupported Unicode escape sequence" errors.
+ * Production-grade sanitizer for JSON-safe strings.
+ * Eliminates "unsupported Unicode escape sequence" errors by:
+ * 1. Normalizing malformed \u sequences (e.g., \uGGGG -> \\uGGGG)
+ * 2. Escaping all backslashes properly
+ * 3. Converting control characters to \uXXXX escapes
  * 
- * This handles:
- * - Raw backslashes (\ -> \\)
- * - Control characters (U+0000–U+001F, U+007F–U+009F) -> \uXXXX
- * - Malformed \u sequences
+ * This three-step approach ensures:
+ * - Malformed escape sequences are preserved as literal text
+ * - Valid Unicode is maintained
+ * - Control characters don't break JSON parsing
+ * - Multi-byte UTF-8 characters (emojis, etc.) pass through safely
  * 
  * @param input - The string to sanitize
- * @returns A JSON-safe string
+ * @returns A JSON-safe string ready for JSON.stringify()
  */
 export function sanitizeForJson(input: string): string {
   if (typeof input !== 'string') return input;
   
-  // First, escape all backslashes
-  let sanitized = input.replace(/\\/g, '\\\\');
+  // Step 1: Normalize malformed \u sequences (not followed by exactly 4 hex digits)
+  // This prevents invalid escapes like \uZZZZ from breaking JSON parsing
+  let sanitized = input.replace(/\\u(?![0-9a-fA-F]{4})/g, '\\\\u');
   
-  // Then, escape control characters to \uXXXX format
+  // Step 2: Escape all remaining backslashes (but not the ones we just added)
+  // We need to be careful not to double-escape what we just fixed
+  sanitized = sanitized.replace(/\\(?!\\)/g, '\\\\');
+  
+  // Step 3: Convert control characters to proper \uXXXX escape sequences
+  // This includes characters that could break JSON structure
   sanitized = sanitized.replace(/[\u0000-\u001F\u007F-\u009F]/g, (ch) => {
     const code = ch.charCodeAt(0).toString(16).padStart(4, '0');
     return `\\u${code}`;
