@@ -46,8 +46,11 @@ const Upload = () => {
       // Lazy load pdf.js to reduce initial bundle size
       const pdfjsLib = await import('pdfjs-dist');
       
-      // Configure worker from CDN
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      // PRODUCTION: Use Vite-bundled worker file to avoid CORS/CDN issues
+      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.mjs',
+        import.meta.url
+      ).toString();
       
       const pdfData = await pdfjsLib.getDocument({ data: typedArray }).promise;
       let text = "";
