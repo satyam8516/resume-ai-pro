@@ -46,9 +46,8 @@ const Upload = () => {
       // Lazy load pdf.js to reduce initial bundle size
       const pdfjsLib = await import('pdfjs-dist');
       
-      // PRODUCTION: Use Vite's ?url import to bundle worker from node_modules
-      const workerSrc = await import('pdfjs-dist/build/pdf.worker.mjs?url');
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc.default;
+      // Use local worker file served from same origin to avoid CDN/module issues
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/assets/pdf.worker.min.mjs';
       
       const pdfData = await pdfjsLib.getDocument({ data: typedArray }).promise;
       let text = "";
