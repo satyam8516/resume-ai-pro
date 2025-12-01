@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import DashboardLayout from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -119,17 +120,36 @@ const Upload = () => {
       if (parseError) {
         // RATE LIMITING: Provide clear, actionable error messages
         console.error('Parse error:', parseError);
-        
-        // Check if the response body contains the error details
-        const errorMessage = parseError.message || '';
-        const responseData = parseData as any;
-        const errorDetails = responseData?.error || '';
-        
-        if (errorMessage.includes('429') || errorDetails.includes('rate limit')) {
+
+        // Safely read error response body from edge function
+        let errorBody: any = null;
+        if (parseError instanceof FunctionsHttpError && parseError.context) {
+          try {
+            errorBody = await parseError.context.json();
+          } catch (e) {
+            console.error('Failed to parse edge function error body:', e);
+          }
+        }
+
+        const status = (parseError as any).status ?? errorBody?.status;
+        const bodyMessage: string =
+          (errorBody && (errorBody.error || errorBody.message)) || "";
+        const normalizedBodyMessage = bodyMessage.toLowerCase();
+
+        if (status === 429 || normalizedBodyMessage.includes('rate limit')) {
           throw new Error('AI rate limit exceeded. Please wait 60 seconds and try again.');
-        } else if (errorMessage.includes('402') || errorDetails.includes('credits') || errorDetails.includes('depleted')) {
+        }
+
+        if (
+          status === 402 ||
+          normalizedBodyMessage.includes('credits') ||
+          normalizedBodyMessage.includes('depleted') ||
+          normalizedBodyMessage.includes('payment_required')
+        ) {
           throw new Error('AI credits depleted. Please add credits to your Lovable workspace to continue using AI features.');
         }
+
+        // Re-throw original error for any other unexpected status
         throw parseError;
       }
 
