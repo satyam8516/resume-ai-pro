@@ -119,10 +119,16 @@ const Upload = () => {
       if (parseError) {
         // RATE LIMITING: Provide clear, actionable error messages
         console.error('Parse error:', parseError);
-        if (parseError.message?.includes('Rate limit') || parseError.message?.includes('429')) {
+        
+        // Check if the response body contains the error details
+        const errorMessage = parseError.message || '';
+        const responseData = parseData as any;
+        const errorDetails = responseData?.error || '';
+        
+        if (errorMessage.includes('429') || errorDetails.includes('rate limit')) {
           throw new Error('AI rate limit exceeded. Please wait 60 seconds and try again.');
-        } else if (parseError.message?.includes('credits') || parseError.message?.includes('402')) {
-          throw new Error('AI credits depleted. Please add credits in Settings → Workspace → Usage.');
+        } else if (errorMessage.includes('402') || errorDetails.includes('credits') || errorDetails.includes('depleted')) {
+          throw new Error('AI credits depleted. Please add credits to your Lovable workspace to continue using AI features.');
         }
         throw parseError;
       }
@@ -159,13 +165,17 @@ const Upload = () => {
       console.error("Sanitized error:", sanitizedErrorMsg);
       
       // User-friendly error messages with actionable guidance
-      if (error.message?.includes("Rate limit") || error.message?.includes("429")) {
+      if (error.message?.includes("rate limit") || error.message?.includes("429")) {
         toast.error("AI rate limit exceeded. Please wait 60 seconds and try again.", {
-          duration: 5000,
+          duration: 6000,
         });
-      } else if (error.message?.includes("credits") || error.message?.includes("402")) {
-        toast.error("AI credits depleted. Add credits in Settings → Workspace → Usage.", {
-          duration: 5000,
+      } else if (error.message?.includes("credits") || error.message?.includes("depleted") || error.message?.includes("402")) {
+        toast.error("⚠️ AI credits depleted. Please add credits to your Lovable workspace to continue.", {
+          duration: 8000,
+          action: {
+            label: "Learn More",
+            onClick: () => window.open("https://docs.lovable.dev/features/ai", "_blank"),
+          },
         });
       } else if (error.message?.includes("Unicode") || error.message?.includes("escape")) {
         toast.error("File contains unsupported characters. Please try a different file format.", {
